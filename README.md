@@ -97,7 +97,7 @@ python tools/test.py $config $ckpt --eval bbox
 #### 2. HD-Map Reconstruction
 | Method             | Pretrained ckpt | Config | mAP  |  Model 
 |--------------------|----------------|--------|---------|--------
-| **MapTR-tiny†+GP** | [Pretrained]() |[**MapTR-tiny**]()    | 42.42  | [Google]()
+| **MapTR-tiny†+GP** | [Pretrained](https://drive.google.com/file/d/1LLzGtkq10W-Pry9xcS6Ypd_jA5YdGs3I/view?usp=drive_link) |[**MapTR-tiny**]()    | 42.42  | [Google]()
 #### 3. Occupancy Predict
 | Method | Pretrained ckpt                                                                                     |  Config | mIoU    |  Model |
 |--------|-----------------------------------------------------------------------------------------------------|---------------|---------|----------------

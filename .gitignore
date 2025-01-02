@@ -5,3 +5,4 @@ __pycache__/
 .installed.cfg
 *.egg
 .cache
+.idea
