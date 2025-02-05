@@ -21,7 +21,21 @@ with efficiency and lower memory consumption.💥
   <img src="asserts/top.png" alt="pipeline" width="1000"/>
 </p>
 
+## Qualitative Rendered Visualization
+### Image and Video DEMO
+
+<b>Rendered Image Visualization.</b>
+
+<div align="center">
+  <img src="asserts/render_image.jpg" alt="pipeline" width="1000"/>
+</div><br/>
+
+<b>Framework Modules Analysis and Rendered Video Visualization.</b>
+
+https://github.com/user-attachments/assets/a85e9302-20f1-42c3-9a5c-7b848112d4af
+
 ## News
+- [2025-02-05] 🚀 Complement rendered visualization images and video for better clear the reconstruction performance of our approach.
 - [2025-01-01] 💥 The experiments setting of **UVTR-CS** config and weight also released which not achieved in the paper.
 
 - [2025-01-01] 🚀 The complete code and associated weights have been released. By the way, Happy New Year to everyone! 💥.
