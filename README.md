@@ -3,10 +3,10 @@
 # GaussianPretrain: A Simple Unified 3D Gaussian Representation for Visual Pre-training in Autonomous Driving
 ### [Paper](https://arxiv.org/abs/2411.12452) | Project Page[TODO]
 
-Shaoqing Xu<sup>1</sup>, Fang Li<sup>2</sup>, Shengyin Jiang<sup>3</sup>, Ziying Song<sup>4</sup>, Li Liu<sup>2</sup>, Zhi-xin Yang<sup>1*</sup>,
+Shaoqing Xu<sup>1</sup>, Fang Li<sup>1</sup>, Shengyin Jiang<sup>2</sup>, Ziying Song<sup>3</sup>, Zhi-xin Yang<sup>1*</sup>,
 <br>
 
-<sup>1</sup>University of Macau, <sup>2</sup>BIT, <sup>3</sup>BUPT, <sup>4</sup>BJTU‌
+<sup>1</sup>University of Macau, <sup>2</sup>BUPT, <sup>3</sup>BJTU‌
 
 </div>
 
@@ -32,9 +32,10 @@ with efficiency and lower memory consumption.💥
 
 <b>Framework Modules Analysis and Rendered Video Visualization.</b>
 
-https://github.com/user-attachments/assets/a85e9302-20f1-42c3-9a5c-7b848112d4af
+https://github.com/user-attachments/assets/c0129445-36e6-4665-b11c-905d908f546d
 
 ## News
+- [2025-03-05] 🚀 We incorporate our method with LiDAR modality and set a new SOTA performance.
 - [2025-02-05] 🚀 Complement rendered visualization images and video for better clear the reconstruction performance of our approach.
 - [2025-01-01] 💥 The experiments setting of **UVTR-CS** config and weight also released which not achieved in the paper.
 
@@ -51,22 +52,13 @@ https://github.com/user-attachments/assets/a85e9302-20f1-42c3-9a5c-7b848112d4af
   <img src="asserts/overview.png" alt="pipeline" width="1000"/>
 </p>
 
-### Weights
-#### 1. Object Detection
-| Method        | Pretrained ckpt | Config | NDS   | mAP  |  Model |
-|---------------|-----|--------------|-------|------|--------
-| **UVTR-C+GP** | [Pretrained](https://drive.google.com/file/d/1f3brSVve4i3UaFBRXODu0KOy9NCkWzjY/view?usp=drive_link)  |[**UVTR-C**](projects/configs/gaussianpretrain/gp_0.075_convnext.py) | 47.2  | 41.7 | [Google](https://drive.google.com/file/d/1EiyUJ6mAfCo6ASaeK5zhH0dhJtzQJcAu/view?usp=drive_link)
-| **UVTR-C+GP** | [Pretrained](https://drive.google.com/file/d/1f3brSVve4i3UaFBRXODu0KOy9NCkWzjY/view?usp=drive_link)  |[**UVTR-CS**](projects/configs/gaussianpretrain/uvtr_dn_cs_ft.py) | 50.0 | 42.3 | [Google](https://drive.google.com/file/d/1eT1MrrZpBY1UBRa2NKz5mRkmbf0USvmW/view?usp=drive_link)
-#### 2. HD-Map Reconstruction
-| Method             | Pretrained ckpt | Config | mAP  |  Model 
-|--------------------|----------------|--------|---------|--------
-| **MapTR-tiny†+GP** | [Pretrained]() |[**MapTR-tiny**]()    | 42.42  | [Google]()
-#### 3. Occupancy Predict
-| Method | Pretrained ckpt                                                                                     |  Config | mIoU    |  Model |
-|--------|-----------------------------------------------------------------------------------------------------|---------------|---------|----------------
-|**BEVFormerOCC+GP**| [Pretrained](https://drive.google.com/file/d/1K8zQKeWfA1kzZEZfC-mPEuWKme5GJJsC/view?usp=drive_link) | [**BEVFormerOCC**](projects/configs/occ_pretrain_ft/bevformer_occ_ft.py)  | 24.21 | [Google](https://drive.google.com/file/d/1K5sZ9436qHp8ZrEtTBTu11B7s6KIfIiJ/view?usp=drive_link)
-|**PanoOCC+GP**| [Pretrained](https://drive.google.com/file/d/1Y24shxyLvizZK3vhwGl2ApsPFjXzDWqR/view?usp=drive_link)    | [**PanoOCC**](projects/configs/occ_pretrain_ft/pano_occ_ft.py)   | 42.62 | [Google](https://drive.google.com/file/d/1SocYH0XEtU-STkXVFvfLSeNgRBQN8xXh/view?usp=drive_link)
-
+## Main Results
+### 3D Object Detection
+![img.png](asserts/img_od.png)
+### HD-Map Reconstruction
+![img.png](asserts/img_hdmap.png)
+### Occupancy Predict
+![img.png](asserts/img_occ.png)
 ## Getting Started
 ## Installation
 This project is based on MMDetection3D, which can be constructed as follows.
@@ -77,7 +69,7 @@ This project is based on MMDetection3D, which can be constructed as follows.
 ```
 conda create -n gaussianpretrain python=3.8
 conda activate gaussianpretrain
-conda install pytorch==1.9.1 torchvision==0.10.1 torchaudio==0.9.1 cudatoolkit=11.3 -c pytorch -c conda-forge
+conda install pytorch==1.9.1 torchvision==0.10.1 torchaudio==0.9.1 cudatoolkit=11.1 -c pytorch -c conda-forge
 
 pip install mmcv-full==1.3.11 -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.9/index.html
 pip install mmdet==2.14.0 mmsegmentation==0.14.1 tifffile-2021.11.2 numpy==1.19.5 protobuf==3.19.4 scikit-image==0.19.2 pycocotools==2.0.0 nuscenes-devkit==1.0.5 spconv-cu111 gpustat numba scipy pandas matplotlib Cython shapely loguru tqdm future fire yacs jupyterlab scikit-image pybind11 tensorboardX tensorboard easydict pyyaml open3d addict pyquaternion awscli timm typing-extensions==4.7.1
