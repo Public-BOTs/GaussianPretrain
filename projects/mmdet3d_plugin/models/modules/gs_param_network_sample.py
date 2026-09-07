@@ -126,7 +126,7 @@ class GSRegresser_Sample(BaseModule):
         rot, scale, opacity, rgb = gaussian_param.split(self.split_dimensions, dim=-1)
 
         return {
-            'rot':self.flatten_vector(self.rotation_activation(rot)),
+            'rot':self.flatten_vector(self.rotation_activation(rot, dim=-1)),
             'scale':self.flatten_vector(torch.clamp_max(self.scaling_activation(scale), self.max_scale)), 
             'opacity':self.flatten_vector(self.opacity_activation(opacity)),
             'rgb':self.flatten_vector(self.rgb_activation(rgb)),
