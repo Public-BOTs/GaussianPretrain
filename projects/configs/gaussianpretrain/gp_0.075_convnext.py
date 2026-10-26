@@ -119,6 +119,9 @@ model = dict(
         loss_cfg=dict(
             sensor_depth_truncation=0.1,
             sparse_points_sdf_supervised=False,
+            # Use per-ray depth-bin supervision by default. Set to "voxel_max"
+            # to enable center-based maximum-opacity aggregation per voxel.
+            opacity_supervision="ray_bin",
             weights=dict(
                 depth_loss=1.0,
                 rgb_loss=10.0,

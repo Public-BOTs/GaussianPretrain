@@ -170,17 +170,79 @@ class GaussianEgoHead(BaseModule):
             ) / torch.clamp(valid_depth_gt_mask.sum(), min=1.0)
             loss_dict["depth_loss"] = depth_loss * loss_weights.depth_loss
 
+        opacity_supervision = self.loss_cfg.get("opacity_supervision", "ray_bin")
+        if opacity_supervision not in ("ray_bin", "voxel_max"):
+            raise ValueError(
+                "opacity_supervision must be 'ray_bin' or 'voxel_max', got {}"
+                .format(opacity_supervision)
+            )
+
         if loss_weights.get("opacity_loss", 0.0) > 0:
-            gt_opacity = torch.stack([ t["opacity_sampled_gt"] for t in targets], dim=0)
-            bs, ray_num, sample_num = gt_opacity.shape
-            pred_oci = preds_dict["voxel_opacity"].reshape(bs, ray_num, sample_num)
-            loss_dict["opacity_loss"] = loss_weights.opacity_loss * F.l1_loss(pred_oci,gt_opacity)
+            if opacity_supervision == "voxel_max":
+                opacity_losses = [
+                    voxel_max_opacity_loss(
+                        preds_dict["voxel_opacity"][batch_idx],
+                        preds_dict["pts_sampled"][batch_idx],
+                        target["pts_sampled_gt"],
+                        target["opacity_sampled_gt"],
+                        self.pc_range,
+                        self.unified_voxel_size,
+                        self.unified_voxel_shape,
+                        loss_type="l1",
+                    )
+                    for batch_idx, target in enumerate(targets)
+                ]
+                opacity_loss = torch.stack(opacity_losses).mean()
+            else:
+                gt_opacity = torch.stack(
+                    [t["opacity_sampled_gt"] for t in targets], dim=0
+                )
+                bs, ray_num, sample_num = gt_opacity.shape
+                pred_oci = preds_dict["voxel_opacity"].reshape(
+                    bs, ray_num, sample_num
+                )
+                opacity_loss = F.l1_loss(pred_oci, gt_opacity)
+            loss_dict["opacity_loss"] = (
+                loss_weights.opacity_loss * opacity_loss
+            )
 
         if loss_weights.get("opacity_focal_loss", 0.0) > 0:
-            gt_opacity = torch.stack([ t["opacity_sampled_gt"] for t in targets], dim=0)
-            bs, ray_num, sample_num = gt_opacity.shape
-            pred_oci = preds_dict["voxel_opacity"].reshape(bs, ray_num, sample_num)
-            loss_dict["opacity_focal_loss"] = loss_weights.opacity_focal_loss * py_sigmoid_focal_loss(pred_oci, gt_opacity, alpha=loss_weights.get('alpha', 0.25), gamma=loss_weights.get('gamma', 2.0))
+            if opacity_supervision == "voxel_max":
+                opacity_focal_losses = [
+                    voxel_max_opacity_loss(
+                        preds_dict["voxel_opacity"][batch_idx],
+                        preds_dict["pts_sampled"][batch_idx],
+                        target["pts_sampled_gt"],
+                        target["opacity_sampled_gt"],
+                        self.pc_range,
+                        self.unified_voxel_size,
+                        self.unified_voxel_shape,
+                        loss_type="focal",
+                        alpha=loss_weights.get("alpha", 0.25),
+                        gamma=loss_weights.get("gamma", 2.0),
+                    )
+                    for batch_idx, target in enumerate(targets)
+                ]
+                opacity_focal_loss = torch.stack(
+                    opacity_focal_losses
+                ).mean()
+            else:
+                gt_opacity = torch.stack(
+                    [t["opacity_sampled_gt"] for t in targets], dim=0
+                )
+                bs, ray_num, sample_num = gt_opacity.shape
+                pred_oci = preds_dict["voxel_opacity"].reshape(
+                    bs, ray_num, sample_num
+                )
+                opacity_focal_loss = py_sigmoid_focal_loss(
+                    pred_oci,
+                    gt_opacity,
+                    alpha=loss_weights.get("alpha", 0.25),
+                    gamma=loss_weights.get("gamma", 2.0),
+                )
+            loss_dict["opacity_focal_loss"] = (
+                loss_weights.opacity_focal_loss * opacity_focal_loss
+            )
         return loss_dict
 
     @force_fp32(apply_to=("viewmatrix", "projmatrix", "rgb_i", 'rot_i', 'scale_i', 'opacity_i', 'offset'))
@@ -220,7 +282,7 @@ class GaussianEgoHead(BaseModule):
 
         uni_feats = self.render_conv(uni_feats)     # [1, 32, 5, 128, 128]
         batch_ret = []
-        render_img_batch = {'img_rgb':[], 'img_depth':[], 'img_mask':[], 'voxel_opacity':None, 'pts_sampled':[]}
+        render_img_batch = {'img_rgb':[], 'img_depth':[], 'img_mask':[], 'voxel_opacity':[], 'pts_sampled':[]}
         for bs_idx in range(len(img_metas)):
             gs_param = self.gs_param_regresser(uni_feats[bs_idx], batch_rays[bs_idx])
 
@@ -246,11 +308,12 @@ class GaussianEgoHead(BaseModule):
 
             render_img_batch['img_rgb'].append(torch.stack(img_rgb, dim=0))
             render_img_batch['img_depth'].append(torch.stack(img_depth, dim=0))
+            render_img_batch['voxel_opacity'].append(opacity_i)
             render_img_batch['pts_sampled'].append(pts if offset_i is None else pts + offset_i)
 
         render_img_batch['img_rgb'] = torch.clamp_max(torch.stack(render_img_batch['img_rgb'], dim=0), 1.0)
         render_img_batch['img_depth'] = torch.stack(render_img_batch['img_depth'], dim=0)
-        render_img_batch['voxel_opacity'] = gs_param['opacity']
+        render_img_batch['voxel_opacity'] = torch.stack(render_img_batch['voxel_opacity'], dim=0)
         render_img_batch['pts_sampled'] = torch.stack(render_img_batch['pts_sampled'], dim=0)
 
         # self.vis_pred_img(render_img_batch['img_rgb'])

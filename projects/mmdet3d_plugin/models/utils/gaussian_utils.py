@@ -127,3 +127,163 @@ def py_sigmoid_focal_loss(pred,
         assert weight.ndim == loss.ndim
     loss = weight_reduce_loss(loss, weight, reduction, avg_factor)
     return loss
+
+
+def _scatter_max(values, inverse, num_groups):
+    """Reduce values by group without requiring a newer PyTorch scatter API."""
+    try:
+        import torch_scatter
+        reduced, _ = torch_scatter.scatter_max(
+            values, inverse, dim=0, dim_size=num_groups
+        )
+        return reduced
+    except ImportError:
+        # The released project depends on torch-scatter, but this fallback keeps
+        # the utility usable in lightweight environments and remains differentiable.
+        reduced = []
+        for group_idx in range(num_groups):
+            group_values = values[inverse == group_idx]
+            reduced.append(group_values.max())
+        return torch.stack(reduced, dim=0)
+
+
+def _voxelize_points(points, pc_range, voxel_size, voxel_shape):
+    """Return linear voxel ids and an in-range mask for ``points``."""
+    coords = torch.floor(
+        (points[..., :3] - pc_range[:3]) / voxel_size
+    ).long()
+    shape = voxel_shape.view(*([1] * (coords.dim() - 1)), 3)
+    inside = ((coords >= 0) & (coords < shape)).all(dim=-1)
+    ids = (
+        coords[..., 0] * (voxel_shape[1] * voxel_shape[2])
+        + coords[..., 1] * voxel_shape[2]
+        + coords[..., 2]
+    )
+    return ids, inside
+
+
+def _lookup_sorted_ids(sorted_ids, query_ids):
+    """Look up sorted integer ids while safely handling missing ids."""
+    positions = torch.searchsorted(sorted_ids, query_ids)
+    if sorted_ids.numel() == 0:
+        return positions, torch.zeros_like(positions, dtype=torch.bool)
+    safe_positions = positions.clamp(max=sorted_ids.numel() - 1)
+    present = (positions < sorted_ids.numel()) & (
+        sorted_ids[safe_positions] == query_ids
+    )
+    return positions, present
+
+
+def voxel_max_opacity_loss(pred_opacity,
+                           anchor_points,
+                           hit_points,
+                           target_one_hot,
+                           pc_range,
+                           voxel_size,
+                           voxel_shape=None,
+                           loss_type="l1",
+                           alpha=0.25,
+                           gamma=2.0):
+    """Supervise opacity after center-based voxel-wise max aggregation.
+
+    Each Gaussian anchor is assigned to the voxel containing its center and
+    the predicted opacity in a voxel is the maximum opacity of its anchors.
+    For a valid LiDAR ray, anchor voxels before the return are free (target
+    zero), the voxel containing the measured return is occupied (target one),
+    and anchors behind the return are unobserved and excluded. Occupied
+    evidence takes precedence when free and occupied rays share a voxel.
+    """
+    target_one_hot = target_one_hot.float()
+    if target_one_hot.dim() == 3 and target_one_hot.size(-1) == 1:
+        target_one_hot = target_one_hot.squeeze(-1)
+    if target_one_hot.dim() != 2:
+        target_one_hot = target_one_hot.reshape(
+            target_one_hot.shape[0], target_one_hot.shape[-1]
+        )
+
+    num_rays, num_samples = target_one_hot.shape
+    pred = pred_opacity.reshape(num_rays, num_samples)
+    points = anchor_points.reshape(num_rays, num_samples, 3).to(pred)
+    hit_points = hit_points.reshape(num_rays, -1)[..., :3].to(pred)
+    target_one_hot = target_one_hot.to(pred)
+
+    pc_range = points.new_tensor(pc_range)
+    voxel_size = points.new_tensor(voxel_size)
+    if voxel_shape is None:
+        voxel_shape = torch.ceil(
+            (pc_range[3:] - pc_range[:3]) / voxel_size
+        ).long()
+    else:
+        voxel_shape = points.new_tensor(voxel_shape).long()
+
+    anchor_ids, anchor_inside = _voxelize_points(
+        points, pc_range, voxel_size, voxel_shape
+    )
+    anchor_ids_flat = anchor_ids.reshape(-1)
+    anchor_inside_flat = anchor_inside.reshape(-1)
+    if not anchor_inside_flat.any():
+        return pred.sum() * 0.0
+
+    # Aggregate every in-range anchor, including anchors behind a return. A
+    # voxel is masked only when no valid ray provides evidence for it.
+    pred_flat = pred.reshape(-1)[anchor_inside_flat]
+    anchor_ids_flat = anchor_ids_flat[anchor_inside_flat]
+    all_ids, all_inverse = torch.unique(
+        anchor_ids_flat, sorted=True, return_inverse=True
+    )
+    pred_voxel = _scatter_max(pred_flat, all_inverse, all_ids.numel())
+
+    has_return = target_one_hot.sum(dim=-1) > 0
+    return_bin = target_one_hot.argmax(dim=-1)
+    sample_bin = torch.arange(
+        num_samples, device=pred.device
+    ).view(1, -1)
+
+    # Only anchors strictly before the measured return provide free-space
+    # evidence. Bins after the return, and the return bin when its center is
+    # not in the hit voxel, remain unobserved.
+    free_mask = has_return[:, None] & (
+        sample_bin < return_bin[:, None]
+    )
+    free_ids = anchor_ids[free_mask & anchor_inside].reshape(-1)
+
+    hit_ids, hit_inside = _voxelize_points(
+        hit_points, pc_range, voxel_size, voxel_shape
+    )
+    occupied_ids = hit_ids[has_return & hit_inside].reshape(-1)
+
+    if free_ids.numel() == 0 and occupied_ids.numel() == 0:
+        return pred.sum() * 0.0
+
+    target_ids = torch.unique(
+        torch.cat((free_ids, occupied_ids), dim=0), sorted=True
+    )
+    target_positions, target_present = _lookup_sorted_ids(
+        all_ids, target_ids
+    )
+    if not target_present.any():
+        return pred.sum() * 0.0
+
+    target_ids = target_ids[target_present]
+    target_positions = target_positions[target_present]
+    pred_voxel = pred_voxel[target_positions]
+
+    # Occupied evidence overrides free evidence in a shared voxel.
+    target_voxel = pred_voxel.new_zeros(target_ids.shape)
+    occupied_ids = torch.unique(occupied_ids, sorted=True)
+    occupied_positions, occupied_present = _lookup_sorted_ids(
+        target_ids, occupied_ids
+    )
+    if occupied_present.any():
+        target_voxel[occupied_positions[occupied_present]] = 1.0
+
+    if loss_type.lower() in ("focal", "focal_loss"):
+        return py_sigmoid_focal_loss(
+            pred_voxel,
+            target_voxel,
+            alpha=alpha,
+            gamma=gamma,
+        )
+    if loss_type.lower() in ("l1", "mae"):
+        return F.l1_loss(pred_voxel, target_voxel)
+    raise ValueError("Unsupported voxel opacity loss: {}".format(loss_type))
